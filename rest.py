@@ -1,63 +1,119 @@
+import random
 import cv2
-import mediapipe as mp
-from flask import Flask, Response
+from ultralytics import YOLO
+from flask import Flask, jsonify, Response
 
 app = Flask(__name__)
 
-@app.route('/hide_face_mesh')
-def hide_face_mesh():
-    mp_face_mesh = mp.solutions.face_mesh
-    mp_drawing = mp.solutions.drawing_utils
-    mp_drawing_styles = mp.solutions.drawing_styles
+# Function to read class data from file
+def read_class_data(file_path):
+    class_list = []
+    with open(file_path, "r") as file:
+        data = file.read()
+        class_list = data.split("\n")
+    return class_list
 
-    webcam = cv2.VideoCapture(0)
+# Read shape class data
+shape_class_list = read_class_data("utils/shapes.txt")
+
+# Read gender class data
+gender_class_list = read_class_data("utils/gender.txt")
+
+# Generate random colors for class list
+detection_colors = []
+for i in range(len(shape_class_list)):
+    r = random.randint(0, 255)
+    g = random.randint(0, 255)
+    b = random.randint(0, 255)
+    detection_colors.append((b, g, r))
+
+# Load a pretrained YOLOv8n shape_model
+shape_model = YOLO("./utils/yolov8n-seg-custom-shape.pt", "v8")
+gender_model = YOLO("./utils/yolov8n-seg-custom-gender.pt", "v8")
+
+# Vals to resize video frames | small frame optimise the run
+frame_wid = 640
+frame_hyt = 480
+
+# Route for opening the camera and detecting objects
+@app.route('/detect_objects', methods=['GET'])
+def detect_objects():
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        return jsonify({"error": "Cannot open camera"})
 
     def generate_frames():
-        while webcam.isOpened():
-            success, img = webcam.read()
+        while True:
+            # Capture frame-by-frame
+            ret, frame = cap.read()
+            # if frame is read correctly ret is True
+            if not ret:
+                break
 
-            # Applying face mesh model using MediaPipe
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            results = mp_face_mesh.FaceMesh(
-                max_num_faces=2,
-                refine_landmarks=True,
-                min_detection_confidence=0.7,
-                min_tracking_confidence=0.6
-            ).process(img)
+            #  resize the frame | small frame optimize the run
+            # frame = cv2.resize(frame, (frame_wid, frame_hyt))
 
-            # Draw annotations on the image
-            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-            if results.multi_face_landmarks:
-                for face_landmarks in results.multi_face_landmarks:
-                    mp_drawing.draw_landmarks(
-                        image=img,
-                        landmark_list=face_landmarks,
-                        connections=mp_face_mesh.FACEMESH_TESSELATION,
-                        landmark_drawing_spec=None,
-                        connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_tesselation_style()
+            # Predict on image
+            shape_detect_params = shape_model.predict(source=[frame], conf=0.45, save=False)
+            gender_detect_params = gender_model.predict(source=[frame], conf=0.45, save=False)
+
+            # Convert tensor array to numpy
+            SDP = shape_detect_params[0].numpy()
+            GDP = gender_detect_params[0].numpy()
+
+            if len(SDP) != 0 and len(GDP) != 0:
+                for j in range(len(shape_detect_params[0])):
+                    for k in range(len(gender_detect_params[0])):
+                        boxes = shape_detect_params[0].boxes
+                        box = boxes[j]
+                        s_clsID = box.cls.numpy()[0]
+                        s_cs = shape_class_list[int(s_clsID)]
+
+                        g_boxes = gender_detect_params[0].boxes
+                        g_box = g_boxes[k]
+                        g_clsID = g_box.cls.numpy()[0]
+                        g_cs = gender_class_list[int(g_clsID)]
+
+                        print(g_cs, s_cs)
+
+            if len(SDP) != 0:
+                for i in range(len(shape_detect_params[0])):
+                    # print(i)
+                    g_clsID = g_box.cls.numpy()[0]
+                    g_cs = gender_class_list[int(g_clsID)]
+                    boxes = shape_detect_params[0].boxes
+                    box = boxes[i]  # returns one box
+                    clsID = box.cls.numpy()[0]
+                    conf = box.conf.numpy()[0]
+                    bb = box.xyxy.numpy()[0]
+
+                    cv2.rectangle(
+                        frame,
+                        (int(bb[0]), int(bb[1])),
+                        (int(bb[2]), int(bb[3])),
+                        detection_colors[int(clsID)],
+                        3,
                     )
 
-                    mp_drawing.draw_landmarks(
-                        image=img,
-                        landmark_list=face_landmarks,
-                        connections=mp_face_mesh.FACEMESH_CONTOURS,
-                        landmark_drawing_spec=None,
-                        connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_contours_style()
+                    # Display class name and confidence
+                    font = cv2.FONT_HERSHEY_COMPLEX
+                    cv2.putText(
+                        frame,
+                        gender_class_list[int(g_clsID)] + "_" + shape_class_list[int(clsID)] + " " + str(round(conf, 3)) + "%",
+                        (int(bb[0]), int(bb[1]) - 10),
+                        font,
+                        1,
+                        (255, 255, 255),
+                        2,
                     )
 
-                    mp_drawing.draw_landmarks(
-                        image=img,
-                        landmark_list=face_landmarks,
-                        connections=mp_face_mesh.FACEMESH_IRISES,
-                        landmark_drawing_spec=None,
-                        connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_iris_connections_style()
-                    )
-
-            ret, buffer = cv2.imencode('.jpg', img)
+            # Convert the frame to JPEG format
+            ret, buffer = cv2.imencode('.jpg', frame)
             frame = buffer.tobytes()
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
+    # Return the frames as a response
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 if __name__ == '__main__':
