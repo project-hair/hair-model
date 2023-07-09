@@ -14,7 +14,7 @@ def read_class_data(file_path):
     return class_list
 
 # Read shape class data
-shape_class_list = read_class_data("utils/shapes.txt")
+shape_class_list = read_class_data("utils/coco.txt")
 
 # Read gender class data
 gender_class_list = read_class_data("utils/gender.txt")
@@ -28,10 +28,10 @@ for i in range(len(shape_class_list)):
     detection_colors.append((b, g, r))
 
 # Load a pretrained YOLOv8n shape_model
-shape_model = YOLO("./utils/yolov8n-seg-custom-shape.pt", "v8")
-gender_model = YOLO("./utils/yolov8n-seg-custom-gender.pt", "v8")
+shape_model = YOLO("./utils/yolo8n-shapes.pt", "v8")
+gender_model = YOLO("./utils/yolov8-gender.pt", "v8")
 
-# Vals to resize video frames | small frame optimise the run
+# Vals to resize video frames | small frame optimise the run+
 frame_wid = 640
 frame_hyt = 480
 
