@@ -1,3 +1,4 @@
-rectangle
-ovar
-squad
+long
+oval
+round
+square

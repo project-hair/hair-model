@@ -1,5 +1,0 @@
-train: C:\Users\Red\PycharmProjects\hair-model\train
-val: C:\Users\Red\PycharmProjects\hair-model\test
-
-nc: 3
-names: ['rectangle', 'ovar', 'squad']
