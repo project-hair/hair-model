@@ -2,10 +2,10 @@ from ultralytics import YOLO
 import numpy
 
 # load a pretrained YOLOv8n model
-model = YOLO("yolov8n-seg-custom.pt", "v8")
+model = YOLO("./utils/yolo8n-shapes.pt", "v8")
 
 # predict on an image
-detection_output = model.predict(source="img.jpg", show=True)
+detection_output = model.predict(source="./utils/img.jpg", show=True)
 
 # Display tensor array
 print(detection_output)
