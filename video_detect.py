@@ -3,57 +3,49 @@ from ultralytics import YOLO
 import cv2
 import numpy as np
 
-app = Flask(__name__)
+class VideoDetector:
+    def __init__(self):
+        self.shape_model = YOLO("./utils/yolo8n-shapes.pt", "v8")
+        self.gender_model = YOLO("./utils/yolov8-gender.pt", "v8")
+        self.shape_class_list = self.read_class_data("utils/coco.txt")
+        self.gender_class_list = self.read_class_data("utils/gender.txt")
+        self.cap = cv2.VideoCapture(0)
 
-# Load pretrained YOLOv8n models
-shape_model = YOLO("./utils/yolo8n-shapes.pt", "v8")
-gender_model = YOLO("./utils/yolov8-gender.pt", "v8")
+    def read_class_data(self, file_path):
+        with open(file_path, "r") as file:
+            class_list = file.read().splitlines()
+        return class_list
 
-# Function to read class data from file
-def read_class_data(file_path):
-    with open(file_path, "r") as file:
-        class_list = file.read().splitlines()
-    return class_list
+    def detect_objects(self, frame):
+        shape_detect_params = self.shape_model.predict(source=[frame], show=True)
+        gender_detect_params = self.gender_model.predict(source=[frame], show=True)
 
-# Read shape class data
-shape_class_list = read_class_data("utils/coco.txt")
 
-# Read gender class data
-gender_class_list = read_class_data("utils/gender.txt")
+        for shape_box in shape_detect_params[0].boxes:
+            s_clsID = shape_box.cls.numpy()[0]
+            s_cs = self.shape_class_list[int(s_clsID)]
 
-# Open the camera for video capture
-cap = cv2.VideoCapture(0)
+            for gender_box in gender_detect_params[0].boxes:
+                g_clsID = gender_box.cls.numpy()[0]
+                g_cs = self.gender_class_list[int(g_clsID)]
 
-@app.route('/video_detection', methods=['GET'])
-def perform_detection():
-    if not cap.isOpened():
-        return jsonify({"error": "Cannot open camera"})
+                results = {"gender": g_cs, "shape": s_cs}
 
-    # Read a frame from the camera
-    ret, frame = cap.read()
-    if not ret:
-        return jsonify({"error": "Failed to read frame from camera"})
+        return results
 
-    # Predict on the frame
-    shape_detect_params = shape_model.predict(source=[frame], show=True)
-    gender_detect_params = gender_model.predict(source=[frame], show=True)
+    def process_frame(self):
+        if not self.cap.isOpened():
+            return jsonify({"error": "Cannot open camera"})
 
-    results = []
+        ret, frame = self.cap.read()
+        if not ret:
+            return jsonify({"error": "Failed to read frame from camera"})
 
-    for shape_box in shape_detect_params[0].boxes:
-        s_clsID = shape_box.cls.numpy()[0]
-        s_cs = shape_class_list[int(s_clsID)]
+        results = self.detect_objects(frame)
 
-        for gender_box in gender_detect_params[0].boxes:
-            g_clsID = gender_box.cls.numpy()[0]
-            g_cs = gender_class_list[int(g_clsID)]
+        if len(results) == 0:
+            return jsonify({"error": "Frame does not contain any detected objects. Kindly select a clearer frame for processing"}), 400
 
-            results.append({"gender": g_cs, "shape": s_cs})
+        return jsonify(results)
 
-    if len(results) == 0:
-        return jsonify({"error": "Frame does not contain any detected objects. Kindly select a clearer frame for processing"}), 400
-
-    return jsonify(results)
-
-if __name__ == '__main__':
-    app.run()
+video_detector = VideoDetector()
