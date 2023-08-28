@@ -42,7 +42,7 @@ def get_data():
     cnx = mysql.connector.connect(**db_config)
     cursor = cnx.cursor()
 
-    query = 'SELECT * FROM hair_1'
+    query = 'SELECT * FROM hair_2'
     cursor.execute(query)
 
     data = cursor.fetchall()
@@ -72,7 +72,7 @@ def filter():
     try:
         cnx = mysql.connector.connect(**db_config)
         cursor = cnx.cursor()
-        query = 'SELECT * FROM hair_1 WHERE gender = %s AND shape = %s'
+        query = 'SELECT * FROM hair_2 WHERE gender = %s AND shape = %s'
         cursor.execute(query, (gender, shape))
         data = cursor.fetchall()
 
