@@ -1,4 +1,5 @@
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 from video_detect import VideoDetector
 from image_detect import ImageDetector
 from db_config import db_config
@@ -7,6 +8,7 @@ import cv2
 import numpy as np
 
 app = Flask(__name__)
+CORS(app, origins="*")
 
 image_detector = ImageDetector()
 video_detector = VideoDetector()
@@ -35,12 +37,12 @@ def perform_video_detection():
 
 
 
-@app.route('/api/all-products/', methods=['GET'])
+@app.route('/api/all-hairstyles/', methods=['GET'])
 def get_data():
     cnx = mysql.connector.connect(**db_config)
     cursor = cnx.cursor()
 
-    query = 'SELECT * FROM hair'
+    query = 'SELECT * FROM hair_1'
     cursor.execute(query)
 
     data = cursor.fetchall()
@@ -58,7 +60,6 @@ def get_data():
     return jsonify(result)
 
 
-
 @app.route('/api/filter/', methods=['POST'])
 def filter():
     data = request.json
@@ -68,24 +69,29 @@ def filter():
     if not gender or not shape:
         return jsonify({'error': 'Both gender and shape parameters are required.'}), 400
 
-    cnx = mysql.connector.connect(**db_config)
-    cursor = cnx.cursor()
-    query = 'SELECT * FROM hair WHERE hair.gender = %s AND hair.shape = %s'
-    cursor.execute(query, (gender, shape))
-    data = cursor.fetchall()
+    try:
+        cnx = mysql.connector.connect(**db_config)
+        cursor = cnx.cursor()
+        query = 'SELECT * FROM hair_1 WHERE gender = %s AND shape = %s'
+        cursor.execute(query, (gender, shape))
+        data = cursor.fetchall()
 
-    cursor.close()
-    cnx.close()
-    result = []
+        result = []
+        for row in data:
+            hair_id, row_gender, row_shape, url = row
+            result.append({
+                'hairId': hair_id,
+                'gender': row_gender,
+                'shape': row_shape,
+                'url': url,
+            })
 
-    for row in data:
-        result.append({
-            'hairId': row[0],
-            'gender': row[1],
-            'shape': row[2],
-            'url': row[3],
-        })
-    return jsonify(result)
+        cursor.close()
+        cnx.close()
+        return jsonify(result)
+
+    except mysql.connector.Error as err:
+        return jsonify({'error': f"Database error: {err}"}), 500
 
 
 
